@@ -1546,7 +1546,11 @@ void update_visualization (void)
     altitude = LANDER_SIZE/2.0;
     landed = true;
     if ((fabs(climb_speed) > MAX_IMPACT_DESCENT_RATE) || (fabs(ground_speed) > MAX_IMPACT_GROUND_SPEED)) crashed = true;
-    velocity_from_positions = vector3d(0.0, 0.0, 0.0);
+	velocity_from_positions = vector3d(0.0, 0.0, 0.0);
+	if (autopilot_mode == E_DESCENT) {
+		evolution(1); // Triggers fitness test
+		reset_simulation(); // Automates evolution algorithm training
+	}
   }
 
   // Update throttle and fuel (throttle might have been adjusted by the autopilot)
@@ -1582,10 +1586,8 @@ void update_visualization (void)
 void attitude_stabilization (void)
   // Three-axis stabilization to ensure the lander's base is always pointing downwards 
 {
-  vector3d up, left, out;
-  double m[16];
-
-  up = position.norm(); // this is the direction we want the lander's nose to point in
+  vector3d up, left, out, k1, k2, up_rot;
+  double m[16], rtheta1, rtheta2;
 
   // !!!!!!!!!!!!! HINT TO STUDENTS ATTEMPTING THE EXTENSION EXERCISES !!!!!!!!!!!!!!
   // For any-angle attitude control, we just need to set "up" to something different,
@@ -1593,18 +1595,27 @@ void attitude_stabilization (void)
   // the attitude to be stabilized at stabilized_attitude_angle to the vertical in the
   // close-up view. So we need to rotate "up" by stabilized_attitude_angle degrees around
   // an axis perpendicular to the plane of the close-up view. This axis is given by the
-  // vector product of "up"and "closeup_coords.right". To calculate the result of the
+  // vector product of "up" and "closeup_coords.right". To calculate the result of the
   // rotation, search the internet for information on the axis-angle rotation formula.
 
-  // Set left to something perpendicular to up
-  left.x = -up.y; left.y = up.x; left.z = 0.0;
-  if (left.abs() < SMALL_NUM) {left.x = -up.z; left.y = 0.0; left.z = up.x;}
+  rtheta1 = stabilized_attitude_angle.first * M_PI / 180; // stabilized attitude angle in radians
+  up = position.norm(); // the radial direction
+  k2 = closeup_coords.right;
+  k1 = up ^ k2; // the axis about which the lander must rotate for attitude control
+  up_rot = (up * cos(rtheta1) + (k1 ^ up) * sin(rtheta1)).norm(); // this is the direction we want the lander's nose to point in
+
+  rtheta2 = stabilized_attitude_angle.second * M_PI / 180;
+  up_rot = (up_rot * cos(rtheta2) + (k2 ^ up_rot) * sin(rtheta2) + k2 * (k2 * up_rot) * (1 - cos(rtheta2))).norm();
+
+  // Set left to something perpendicular to up_rot
+  left.x = -up_rot.y; left.y = up_rot.x; left.z = 0.0;
+  if (left.abs() < SMALL_NUM) {left.x = -up_rot.z; left.y = 0.0; left.z = up_rot.x;}
   left = left.norm();  
-  out = left^up;
+  out = left^up_rot;
   // Construct modelling matrix (rotation only) from these three vectors
-  m[0] = out.x; m[1] = out.y; m[2] = out.z; m[3] = 0.0;
+  m[0] = out.x; m[1] = out.y; m[2] = out.z; m[3] = 0.0; 
   m[4] = left.x; m[5] = left.y; m[6] = left.z; m[7] = 0.0;
-  m[8] = up.x; m[9] = up.y; m[10] = up.z; m[11] = 0.0;
+  m[8] = up_rot.x; m[9] = up_rot.y; m[10] = up_rot.z; m[11] = 0.0;
   m[12] = 0.0; m[13] = 0.0; m[14] = 0.0; m[15] = 1.0;
   // Decomponse into xyz Euler angles
   orientation = matrix_to_xyz_euler(m);
@@ -1640,7 +1651,7 @@ vector3d thrust_wrt_world (void)
     last_time_lag_updated = simulation_time;
   }
 
-  if (stabilized_attitude && (stabilized_attitude_angle == 0)) { // specific solution, avoids rounding errors in the more general calculation below
+  if (stabilized_attitude && (stabilized_attitude_angle.first == 0) && (stabilized_attitude_angle.second == 0)) { // specific solution, avoids rounding errors in the more general calculation below
     b = lagged_throttle*MAX_THRUST*position.norm();
   } else {
     a.x = 0.0; a.y = 0.0; a.z = lagged_throttle*MAX_THRUST;
@@ -1688,7 +1699,7 @@ void reset_simulation (void)
   unsigned long i;
 
   // Reset these three lander parameters here, so they can be overwritten in initialize_simulation() if so desired
-  stabilized_attitude_angle = 0;
+  stabilized_attitude_angle = make_pair(0, 0);
   throttle = 0.0;
   fuel = 1.0;
 
@@ -2057,6 +2068,17 @@ void glut_key (unsigned char k, int x, int y)
     paused = true;
     break;
 
+  case 'r': case 'R':
+	// rotatate clockwise
+    if (!autopilot_enabled && !landed) stabilized_attitude_angle.first++;
+    if (paused) refresh_all_subwindows();
+    break;
+
+  case 'e': case 'E':
+	// rotatate anticlockwise
+    if (!autopilot_enabled && !landed) stabilized_attitude_angle.first--;
+    if (paused) refresh_all_subwindows();
+    break;
   }
 }
 
@@ -2064,6 +2086,9 @@ int main (int argc, char* argv[])
   // Initializes GLUT windows and lander state, then enters GLUT main loop
 {
   int i;
+
+  // Initialise random function
+  srand(time(NULL));
 
   // Main GLUT window
   glutInit(&argc, argv);

@@ -30,6 +30,9 @@
 #include <fstream>
 #include <cmath>
 #include <cstdlib>
+#include <vector>
+#include <algorithm>
+#include <time.h>
 
 // GLUT mouse wheel operations work under Linux only
 #if !defined (GLUT_WHEEL_UP)
@@ -132,8 +135,9 @@ struct closeup_coords_t {
   vector3d right;
 };
 
-// Enumerated data type for parachute status
+// Enumerated data type for parachute status and autopilot mode
 enum parachute_status_t { NOT_DEPLOYED = 0, DEPLOYED = 1, LOST = 2 };
+enum autopilot_mode_t { REENTRY = 0, DESCENT = 1, INJECTION = 2, E_DESCENT = 3};
 
 #ifdef DECLARE_GLOBAL_VARIABLES // actual declarations of all global variables for lander_graphics.cpp
 
@@ -153,7 +157,7 @@ bool crashed = false;
 int last_click_x = -1;
 int last_click_y = -1;
 short simulation_speed = 5;
-double delta_t, simulation_time;
+double delta_t, simulation_time, mass, EA_Kh, EA_Kp, EA_delta;
 unsigned short scenario = 0;
 string scenario_description[10];
 bool static_lighting = false;
@@ -166,11 +170,12 @@ unsigned long long time_program_started;
 
 // Lander state - the visualization routines use velocity_from_positions, so not sensitive to 
 // any errors in the velocity update in numerical_dynamics
-vector3d position, orientation, velocity, velocity_from_positions, last_position;
+vector3d position, orientation, velocity, velocity_from_positions, last_position, thrust, grav;
 double climb_speed, ground_speed, altitude, throttle, fuel;
 bool stabilized_attitude, autopilot_enabled, parachute_lost;
 parachute_status_t parachute_status;
-int stabilized_attitude_angle;
+autopilot_mode_t autopilot_mode;
+pair <int, int> stabilized_attitude_angle;
 
 // Orbital and closeup view parameters
 double orbital_zoom, save_orbital_zoom, closeup_offset, closeup_xr, closeup_yr, terrain_angle;
@@ -185,13 +190,15 @@ GLfloat straight_on[] = { 0.0, 0.0, 1.0, 0.0 };
 
 #else // extern declarations of those global variables used in lander.cpp
 
-extern bool stabilized_attitude, autopilot_enabled;
-extern double delta_t, simulation_time, throttle, fuel;
+extern bool stabilized_attitude, landed, crashed, autopilot_enabled;
+extern double delta_t, simulation_time, throttle, fuel, EA_Kh, EA_Kp, EA_delta;
 extern unsigned short scenario;
 extern string scenario_description[];
-extern vector3d position, orientation, velocity;
+extern vector3d position, orientation, velocity, thrust, grav;
 extern parachute_status_t parachute_status;
-extern int stabilized_attitude_angle;
+extern autopilot_mode_t autopilot_mode;
+extern pair <int, int> stabilized_attitude_angle;
+
 
 #endif
 
@@ -246,3 +253,4 @@ void closeup_mouse_button (int button, int state, int x, int y);
 void closeup_mouse_motion (int x, int y);
 void glut_special (int key, int x, int y);
 void glut_key (unsigned char k, int x, int y);
+void evolution (int mode);

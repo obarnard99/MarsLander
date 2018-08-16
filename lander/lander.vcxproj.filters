@@ -15,10 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="lander.cpp">
+    <ClCompile Include="lander_graphics.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="lander_graphics.cpp">
+    <ClCompile Include="lander.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
